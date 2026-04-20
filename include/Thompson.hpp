@@ -11,6 +11,9 @@
 #include "VSet.hpp"
 
 struct Item {
+    Item(uint32_t id_, int s, int f)
+    : id(id_), successes(s), failures(f) {}
+
     uint32_t id;
     int successes;
     int failures;
