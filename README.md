@@ -1,3 +1,3 @@
 # fast-thompson
 
-pip install git+https://github.com/yourname/fast-thompson.git
+pip install git+https://github.com/MarcelSwacha/fast-thompson.git
