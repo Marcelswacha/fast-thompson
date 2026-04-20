@@ -7,5 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(pybind11 CONFIG REQUIRED)
 
 pybind11_add_module(fast_thompson src/pybind_module.cpp)
-
 target_include_directories(fast_thompson PRIVATE include)
+
+target_compile_options(fast_thompson PRIVATE -mavx2 -O3)
