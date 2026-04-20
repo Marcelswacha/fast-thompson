@@ -1,0 +1,17 @@
+[build-system]
+requires = [
+    "scikit-build-core>=0.5.0",
+    "pybind11>=2.11"
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "fast-thompson"
+version = "0.1.0"
+description = "Fast Thompson Sampling (C++ backend)"
+authors = [{name = "Marcel Swacha"}]
+readme = "README.md"
+requires-python = ">=3.8"
+
+[tool.scikit-build]
+wheel.expand-macos-universal-tags = true
