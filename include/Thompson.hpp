@@ -4,6 +4,7 @@
 #include <random>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "Marsaglia.hpp"
 #include "Uniform.hpp"

@@ -8,9 +8,10 @@ template <typename T>
 class FixedMinHeap {
 public:
     explicit FixedMinHeap(size_t capacity = 16)
-        : data_(nullptr), size_(0), capacity_(0)
+        : data_(nullptr), size_(0), capacity_(0), maxSize_(0)
     {
         allocate(capacity);
+        maxSize_ = capacity;
     }
 
     ~FixedMinHeap() {
@@ -28,10 +29,11 @@ public:
         }
 
         size_ = 0;
+        maxSize_ = newCapacity;
     }
 
     void insert(const T& item) {
-        if (size_ < capacity_) {
+        if (size_ < maxSize_) {
             data_[size_] = item;
             heapifyUp(size_);
             ++size_;
@@ -46,12 +48,13 @@ public:
     }
 
     size_t size() const { return size_; }
-    size_t capacity() const { return capacity_; }
+    size_t capacity() const { return maxSize_; }
 
 private:
     T* data_;
     size_t size_;
     size_t capacity_;
+    size_t maxSize_;
 
     void allocate(size_t cap) {
         data_ = new T[cap];
