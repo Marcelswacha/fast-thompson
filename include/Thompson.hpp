@@ -101,7 +101,7 @@ public:
     std::vector<IdWithScore> sample(const size_t num, const std::vector<uint32_t>& forbidden) {
         set_.clear(forbidden);
         heap_.clear(num);
-        refill();
+        refill();  // batch-generate this call's randomness upfront
 
         size_t i = 0;
 
@@ -183,16 +183,28 @@ private:
     }
 
     void prepareDistribution() {
-        if (items_.size() > 32) {
-            udist_.resize(border_);
-            ndist_.resize(items_.size());
-        }
+        // Batch strategy: generate one sample() call's worth of randomness
+        // upfront in a single sequential, vectorized pass (cache friendly),
+        // instead of lazily refilling in the middle of the sampling loop.
+        //
+        // Budget per call:
+        //  - each exact item draws 2 gammas; each Marsaglia-Tsang gamma draw
+        //    consumes >= 1 normal and >= 1 uniform, with ~96% acceptance and
+        //    occasional squeeze-test retries -> budget ~2.25 of each
+        //  - each approx item draws 1 normal
+        //
+        // If a call exceeds the budget (rejection streaks), the generators
+        // still refill themselves lazily on exhaustion, so under-sizing is a
+        // performance detail, never a correctness issue.
+        const size_t exact = border_;
+        const size_t approx = items_.size() - border_;
+
+        udist_.resize(2 * exact + exact / 4 + 32);
+        ndist_.resize(2 * exact + exact / 4 + approx + 32);
     }
 
     void refill() {
-        if (items_.size() > 32) {
-            udist_.refill();
-            ndist_.refill();
-        }
+        udist_.refill();
+        ndist_.refill();
     }
 };
