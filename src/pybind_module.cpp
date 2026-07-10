@@ -18,6 +18,9 @@ PYBIND11_MODULE(fast_thompson, m) {
         .def_readonly("score", &IdWithScore::score);
 
     py::class_<Thompson>(m, "Thompson")
-        .def(py::init<const std::vector<Item>&>())
-        .def("sample", &Thompson::sample);
+        .def(py::init<const std::vector<Item>&, uint64_t>(),
+             py::arg("items"),
+             py::arg("seed") = 0xdeadbeefcafebabeULL)
+        .def("sample", &Thompson::sample,
+             py::arg("num"), py::arg("forbidden"));
 }

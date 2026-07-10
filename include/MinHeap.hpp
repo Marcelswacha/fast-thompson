@@ -15,7 +15,7 @@ public:
     }
 
     ~FixedMinHeap() {
-        std::free(data_);
+        delete[] data_;
     }
 
     FixedMinHeap(const FixedMinHeap&) = delete;
@@ -24,7 +24,7 @@ public:
     // Reset heap, optionally change capacity
     void clear(size_t newCapacity = 0) {
         if (newCapacity > capacity_) {
-            std::free(data_);
+            delete[] data_;
             allocate(newCapacity);
         }
 

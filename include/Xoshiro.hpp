@@ -28,13 +28,14 @@ public:
 
     uint64_t operator()() {
         if (_idx == _capacity) {
-            _idx = 0;
+            refill();
         }
         return _buffer[_idx++];
     }
 
     void seed(uint64_t seed_val) {
         seed_all(seed_val);
+        refill();
     }
 
     void refill() {
@@ -42,6 +43,7 @@ public:
             __m256i rnd = next_vector();
             _mm256_store_si256(reinterpret_cast<__m256i*>(&_buffer[i]), rnd);
         }
+        _idx = 0;
     }
 
     void resize(size_t capacity) {
@@ -50,9 +52,12 @@ public:
         uint64_t* oldBuffer = _buffer;
 
         allocate(capacity);
-        _idx = 0;
 
         if (oldBuffer) std::free(oldBuffer);
+
+        // The new buffer is uninitialized memory; generate into it right away
+        // so consumers never read garbage (refill also resets _idx).
+        refill();
     }
 
 
@@ -87,16 +92,20 @@ private:
 
     void seed_all(uint64_t seed) {
         uint64_t x = seed;
-        uint64_t tmp[4];
 
-        for (int i = 0; i < 4; ++i) {
-            tmp[i] = splitmix64(x);
+        // Each of the 4 SIMD lanes must get its own independent state,
+        // otherwise all lanes generate identical streams.
+        uint64_t s[4][4]; // [state_word][lane]
+        for (int lane = 0; lane < 4; ++lane) {
+            for (int word = 0; word < 4; ++word) {
+                s[word][lane] = splitmix64(x);
+            }
         }
 
-        _s0 = _mm256_set1_epi64x(tmp[0]);
-        _s1 = _mm256_set1_epi64x(tmp[1]);
-        _s2 = _mm256_set1_epi64x(tmp[2]);
-        _s3 = _mm256_set1_epi64x(tmp[3]);
+        _s0 = _mm256_set_epi64x(s[0][3], s[0][2], s[0][1], s[0][0]);
+        _s1 = _mm256_set_epi64x(s[1][3], s[1][2], s[1][1], s[1][0]);
+        _s2 = _mm256_set_epi64x(s[2][3], s[2][2], s[2][1], s[2][0]);
+        _s3 = _mm256_set_epi64x(s[3][3], s[3][2], s[3][1], s[3][0]);
     }
 
     __m256i next_vector() {

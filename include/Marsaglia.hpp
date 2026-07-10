@@ -39,6 +39,11 @@ public:
         return _samples[_idx++];
     }
 
+    void seed(uint64_t seed_val) {
+        _uniform.seed(seed_val);
+        refill();
+    }
+
     void refill() {
         _uniform.refill();
 
