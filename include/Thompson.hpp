@@ -48,9 +48,17 @@ struct IdWithScore {
 
 class Thompson {
 public:
-    Thompson(const std::vector<Item>& items)
+    explicit Thompson(const std::vector<Item>& items,
+                      uint64_t seed = 0xdeadbeefcafebabeULL)
         : set_(items.size())
     {
+        // Seed the two generators with *different* derived seeds. If they
+        // shared a seed, the uniform stream used for gamma rejection would be
+        // identical to the uniform stream feeding the normal generator,
+        // producing correlated (invalid) samples.
+        udist_.seed(seed);
+        ndist_.seed(seed ^ 0x9e3779b97f4a7c15ULL);
+
         // Copy  items
         items_.reserve(items.size());
         for (const auto& item : items) {
@@ -98,17 +106,17 @@ public:
         size_t i = 0;
 
         // exact sampling first
-        for (i; i < border_; ++i) {
+        for (; i < border_; ++i) {
             const auto& item = precomp_[i];
 
             if (set_.contains(item.id)) continue;
 
             const double score = sample_beta(item);
-            heap_.insert({item.id, float(score)});
+            heap_.insert({item.id, score});
         }
 
         // later approximation
-        for (i; i < precomp_.size(); ++i) {
+        for (; i < precomp_.size(); ++i) {
             const auto& item = precomp_[i];
 
             if (set_.contains(item.id)) continue;
@@ -117,7 +125,7 @@ public:
             double score = item.mu + item.sigma * z;
             score = std::clamp(score, 0.0, 1.0);
 
-            heap_.insert(IdWithScore{item.id, float(score)});
+            heap_.insert(IdWithScore{item.id, score});
         }
 
         return heap_.getTopItems();
