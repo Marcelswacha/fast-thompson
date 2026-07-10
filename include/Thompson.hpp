@@ -4,12 +4,14 @@
 #include <random>
 #include <utility>
 #include <vector>
+#include <cstring>
+#include <cstdint>
 #include <iostream>
 
 #include "Marsaglia.hpp"
+#include "Ziggurat.hpp"
 #include "Uniform.hpp"
 #include "MinHeap.hpp"
-#include "VSet.hpp"
 
 struct Item {
     Item(uint32_t id_, int s, int f)
@@ -50,7 +52,6 @@ class Thompson {
 public:
     explicit Thompson(const std::vector<Item>& items,
                       uint64_t seed = 0xdeadbeefcafebabeULL)
-        : set_(items.size())
     {
         // Seed the two generators with *different* derived seeds. If they
         // shared a seed, the uniform stream used for gamma rejection would be
@@ -71,6 +72,7 @@ public:
                 }) - items_.begin();
 
         prepareDistribution();
+        buildIndex();
 
         precomp_.reserve(items.size());
         for (size_t i = 0; i < items.size(); ++i) {
@@ -99,7 +101,12 @@ public:
     }
 
     std::vector<IdWithScore> sample(const size_t num, const std::vector<uint32_t>& forbidden) {
-        set_.clear(forbidden);
+        std::memset(skip_.data(), 0, skip_.size());
+        for (uint32_t id : forbidden) {
+            const int64_t idx = findIndex(id);
+            if (idx >= 0) skip_[idx] = 1;
+        }
+
         heap_.clear(num);
         refill();  // batch-generate this call's randomness upfront
 
@@ -107,20 +114,18 @@ public:
 
         // exact sampling first
         for (; i < border_; ++i) {
+            if (skip_[i]) continue;
+
             const auto& item = precomp_[i];
-
-            if (set_.contains(item.id)) continue;
-
             const double score = sample_beta(item);
             heap_.insert({item.id, score});
         }
 
         // later approximation
         for (; i < precomp_.size(); ++i) {
+            if (skip_[i]) continue;
+
             const auto& item = precomp_[i];
-
-            if (set_.contains(item.id)) continue;
-
             double z = normal();
             double score = item.mu + item.sigma * z;
             score = std::clamp(score, 0.0, 1.0);
@@ -132,25 +137,35 @@ public:
     }
 
 private:
+    // One full cache line per item: the exact path touches s_d/s_c/f_d/f_c
+    // per item, and 64-byte alignment guarantees exactly one line per access
+    // (a packed 56-byte layout straddles lines and measures slower).
     struct alignas(64) Precomputed {
-        double mu;      // 8 bytes
-        double sigma;   // 8 bytes
-        uint32_t id;         // 4 bytes
+        double mu;
+        double sigma;
         double s_d;
         double s_c;
         double f_d;
         double f_c;
+        uint32_t id;
     };
 
     std::vector<Item> items_;
     std::vector<Precomputed> precomp_;
 
     VUniformDistribution udist_;
-    VMarsaglia ndist_;
+    VZiggurat ndist_;
 
     FixedMinHeap<IdWithScore> heap_;
-    VSet set_;
     size_t border_ = 0;
+
+    // Forbidden-id filtering: per-item lookup must be branch-predictable and
+    // sequential, so we hash only the (few) forbidden ids into a dense
+    // skip-byte per item position, instead of probing a hash set for every
+    // item in the hot loop.
+    std::vector<uint8_t> skip_;
+    std::vector<uint32_t> mapKeys_;   // open addressing, key = id + 1, 0 = empty
+    std::vector<uint32_t> mapVals_;   // value = position in precomp_
 
     inline double normal() {
         return ndist_();
@@ -180,6 +195,44 @@ private:
         double g2 = sample_gamma(p.f_d, p.f_c);
 
         return g1 / (g1 + g2);
+    }
+
+    void buildIndex() {
+        skip_.assign(items_.size(), 0);
+
+        size_t cap = 32;
+        while (cap < items_.size() * 2) cap <<= 1;   // load factor <= 0.5
+        mapKeys_.assign(cap, 0);
+        mapVals_.assign(cap, 0);
+
+        const size_t mask = cap - 1;
+        for (size_t pos = 0; pos < items_.size(); ++pos) {
+            const uint32_t key = items_[pos].id + 1;
+            size_t idx = hash(key) & mask;
+            while (mapKeys_[idx] != 0) idx = (idx + 1) & mask;
+            mapKeys_[idx] = key;
+            mapVals_[idx] = static_cast<uint32_t>(pos);
+        }
+    }
+
+    int64_t findIndex(uint32_t id) const {
+        const uint32_t key = id + 1;
+        const size_t mask = mapKeys_.size() - 1;
+        size_t idx = hash(key) & mask;
+        while (mapKeys_[idx] != 0) {
+            if (mapKeys_[idx] == key) return mapVals_[idx];
+            idx = (idx + 1) & mask;
+        }
+        return -1;
+    }
+
+    static inline uint32_t hash(uint32_t x) {
+        x ^= x >> 16;
+        x *= 0x7feb352d;
+        x ^= x >> 15;
+        x *= 0x846ca68b;
+        x ^= x >> 16;
+        return x;
     }
 
     void prepareDistribution() {
