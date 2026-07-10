@@ -1,3 +1,5 @@
 .idea
 .vscode
 .pytest_cache
+build
+perf.data
