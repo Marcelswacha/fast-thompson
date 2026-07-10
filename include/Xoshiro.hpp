@@ -52,9 +52,12 @@ public:
         uint64_t* oldBuffer = _buffer;
 
         allocate(capacity);
-        _idx = 0;
 
         if (oldBuffer) std::free(oldBuffer);
+
+        // The new buffer is uninitialized memory; generate into it right away
+        // so consumers never read garbage (refill also resets _idx).
+        refill();
     }
 
 
