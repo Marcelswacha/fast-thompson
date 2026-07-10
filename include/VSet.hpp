@@ -2,6 +2,9 @@
 
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
+#include <vector>
+#include <new>
 
 class VSet {
     static constexpr uint32_t empty = 0u;
@@ -21,29 +24,33 @@ public:
     VSet(const VSet&) = delete;
     VSet& operator=(const VSet&) = delete;
 
+    // Keys are stored internally as (element + 1) so that id == 0 does not
+    // collide with the `empty` sentinel. Ids up to UINT32_MAX - 1 are supported.
     void insert(uint32_t element) {
         if (needsResize()) {
             resize(_capacity * 2);
         }
 
-        size_t idx = hash(element) % _capacity;
+        const uint32_t key = element + 1;
+        size_t idx = hash(key) % _capacity;
 
         while (_data[idx] != empty) {
-            if (_data[idx] == element) return;
+            if (_data[idx] == key) return;
             idx = (idx + 1) % _capacity;
         }
 
-        _data[idx] = element;
+        _data[idx] = key;
         ++_size;
     }
 
     bool contains(uint32_t element) const {
         if (_capacity == 0) return false;
 
-        size_t idx = hash(element) % _capacity;
+        const uint32_t key = element + 1;
+        size_t idx = hash(key) % _capacity;
 
         while (_data[idx] != empty) {
-            if (_data[idx] == element) return true;
+            if (_data[idx] == key) return true;
             idx = (idx + 1) % _capacity;
         }
 
@@ -59,9 +66,9 @@ public:
         std::memset(_data, empty, _capacity * sizeof(uint32_t));
         _size = 0;
 
-        size_t count = std::min(elements.size(), static_cast<size_t>(_capacity));
-        std::memcpy(_data, elements.data(), count * sizeof(uint32_t));
-        _size = count;
+        for (uint32_t e : elements) {
+            insert(e);
+        }
     }
 
     size_t size() const { return _size; }
@@ -90,10 +97,10 @@ private:
 
         _size = 0;
 
-        // rehash
+        // rehash (stored values are already offset keys, so undo the +1)
         for (size_t i = 0; i < oldCap; ++i) {
             if (oldData[i] != empty) {
-                insert(oldData[i]);
+                insert(oldData[i] - 1);
             }
         }
 
